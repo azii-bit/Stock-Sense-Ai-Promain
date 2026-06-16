@@ -481,14 +481,41 @@ def load_stock_data(symbol, data_source, period):
     days = get_days_from_period(period)
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days)
+
+    def generate_sample_data():
+        idx = pd.date_range(end=datetime.now(), periods=days)
+
+        np.random.seed(42)
+        initial_price = 100
+        prices = [initial_price]
+
+        for i in range(1, len(idx)):
+            change_percent = np.random.normal(0, 0.02)
+            new_price = prices[-1] * (1 + change_percent)
+            prices.append(new_price)
+
+        df = pd.DataFrame(index=idx)
+        df['Close'] = prices
+        df['Open'] = df['Close'] * (1 + np.random.normal(0, 0.01, size=len(df)))
+        df['High'] = pd.concat([df['Open'], df['Close']], axis=1).max(axis=1) * (1 + abs(np.random.normal(0, 0.005, size=len(df))))
+        df['Low'] = pd.concat([df['Open'], df['Close']], axis=1).min(axis=1) * (1 - abs(np.random.normal(0, 0.005, size=len(df))))
+        df['Volume'] = np.random.normal(1000000, 200000, size=len(df)).astype(int)
+        df['Volume'] = df['Volume'].apply(lambda x: max(0, x))
+
+        return df
     
     try:
         if data_source == "Yahoo Finance":
             # Download data from Yahoo Finance
-            df = yf.download(symbol, start=start_date, end=end_date, progress=False, auto_adjust=False)
+            try:
+                df = yf.download(symbol, start=start_date, end=end_date, progress=False, auto_adjust=False)
+            except Exception as e:
+                st.warning(f"Yahoo Finance unavailable for {symbol}: {e}. Using sample data instead.")
+                return generate_sample_data()
+
             if df is None or df.empty:
-                st.error(f"No data found for symbol {symbol}")
-                return None
+                st.warning(f"No data found for symbol {symbol}. Using sample data instead.")
+                return generate_sample_data()
             
             # If columns are MultiIndex (happens with yfinance), flatten them
             if isinstance(df.columns, pd.MultiIndex):
@@ -535,27 +562,7 @@ def load_stock_data(symbol, data_source, period):
             return df
             
         else:  # Sample Data
-            # Generate sample data
-            idx = pd.date_range(end=datetime.now(), periods=days)
-            
-            np.random.seed(42)
-            initial_price = 100
-            prices = [initial_price]
-            
-            for i in range(1, len(idx)):
-                change_percent = np.random.normal(0, 0.02)  # 2% standard deviation
-                new_price = prices[-1] * (1 + change_percent)
-                prices.append(new_price)
-            
-            df = pd.DataFrame(index=idx)
-            df['Close'] = prices
-            df['Open'] = df['Close'] * (1 + np.random.normal(0, 0.01, size=len(df)))
-            df['High'] = pd.concat([df['Open'], df['Close']], axis=1).max(axis=1) * (1 + abs(np.random.normal(0, 0.005, size=len(df))))
-            df['Low'] = pd.concat([df['Open'], df['Close']], axis=1).min(axis=1) * (1 - abs(np.random.normal(0, 0.005, size=len(df))))
-            df['Volume'] = np.random.normal(1000000, 200000, size=len(df)).astype(int)
-            df['Volume'] = df['Volume'].apply(lambda x: max(0, x))  # Ensure volume is non-negative
-            
-            return df
+            return generate_sample_data()
     except Exception as e:
         st.error(f"Error loading data: {str(e)}")
         return None
